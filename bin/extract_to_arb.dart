@@ -22,6 +22,7 @@ void main(List<String> args) {
   var outputFilename = 'intl_messages.arb';
   String? sourcesListFile;
   var transformer = false;
+  var checkDuplicate = false;
   var parser = ArgParser();
   var extract = MessageExtraction();
   String? locale;
@@ -100,6 +101,11 @@ void main(List<String> args) {
     callback: (val) => extract.descriptionRequired = val,
   );
 
+  parser.addFlag("duplicate_checker",
+      defaultsTo: false,
+      help: "check duplicate key and value",
+      callback: (val) => checkDuplicate = val);
+
   var argResults = parser.parse(args);
   var showHelp = (argResults['help'] as bool?) ?? false;
   if (args.isEmpty || showHelp) {
@@ -132,6 +138,53 @@ void main(List<String> args) {
             suppressMetadata: suppressMetaData,
           ))
       .forEach((message) => allMessages.addAll(message));
+
+  if (checkDuplicate) {
+    final keyCount = <String, int>{};
+    final duplicateValues = <String, List<String>>{};
+    final duplicateKeys = <String, List<String>>{};
+    for (final key in allMessages.keys) {
+      if (!key.startsWith('@') && allMessages[key] is String) {
+        if (keyCount.containsKey(key)) {
+          keyCount[key] = 1 + keyCount[key]!;
+        } else {
+          keyCount[key] = 1;
+        }
+        if (duplicateKeys.containsKey(key)) {
+          if (keyCount[key]! > 1) {
+            (duplicateKeys[key])!.add(allMessages[key] as String);
+          } else {
+            duplicateKeys[key] = [allMessages[key] as String];
+          }
+        }
+        final value = allMessages[key] as String;
+        if (duplicateValues.containsKey(value)) {
+          duplicateValues[value]!.add(key);
+        } else {
+          duplicateValues[value] = [key];
+        }
+      }
+    }
+    bool hasExit = false;
+    print("不以@开头的重复的键和值：");
+    duplicateKeys.forEach((key, List<String> value) {
+      if (value.length > 1) {
+        hasExit = true;
+        print("重复的key:$key values:${value.join(" ")}");
+      }
+    });
+    duplicateValues.forEach((key, List<String> value) {
+      if (value.length > 1) {
+        hasExit = true;
+        print("重复的value:$key keys:${value.join(" ")}");
+      }
+    });
+
+    if (hasExit) {
+      exit(1);
+    }
+  }
+
   var file = File(path.join(targetDir, outputFilename));
   file.writeAsStringSync(JsonEncoder.withIndent('  ').convert(allMessages));
   if (extract.hasWarnings && extract.warningsAreErrors) {
