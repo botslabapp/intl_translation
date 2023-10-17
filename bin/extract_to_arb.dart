@@ -22,6 +22,7 @@ main(List<String> args) {
   var outputFilename;
   String sourcesListFile;
   bool transformer;
+  bool checkDuplicate;
   var parser = new ArgParser();
   var extraction = new MessageExtraction();
   String locale;
@@ -76,6 +77,10 @@ main(List<String> args) {
       defaultsTo: false,
       help: "Fail for messages that don't have a description.",
       callback: (val) => extraction.descriptionRequired = val);
+  parser.addFlag("duplicate_checker",
+      defaultsTo: false,
+      help: "check duplicate key and value",
+      callback: (val) => checkDuplicate = val);
 
   parser.parse(args);
   if (args.length == 0) {
@@ -104,6 +109,53 @@ main(List<String> args) {
       ),
     );
   }
+
+  if (checkDuplicate) {
+    final keyCount = <String, int>{};
+    final duplicateValues = <String, List<String>>{};
+    final duplicateKeys = <String, List<String>>{};
+    for (final key in allMessages.keys) {
+      if (!key.startsWith('@') && allMessages[key] is String) {
+        if (keyCount.containsKey(key)) {
+          keyCount[key] = 1 + keyCount[key];
+        } else {
+          keyCount[key] = 1;
+        }
+        if (duplicateKeys.containsKey(key)) {
+          if (keyCount[key] > 1) {
+            (duplicateKeys[key]).add(allMessages[key] as String);
+          } else {
+            duplicateKeys[key] = [allMessages[key] as String];
+          }
+        }
+        final value = allMessages[key] as String;
+        if (duplicateValues.containsKey(value)) {
+          duplicateValues[value].add(key);
+        } else {
+          duplicateValues[value] = [key];
+        }
+      }
+    }
+    bool hasExit = false;
+    print("不以@开头的重复的键和值：");
+    duplicateKeys.forEach((key, List<String> value) {
+      if (value.length > 1) {
+        hasExit = true;
+        print("重复的key:$key values:${value.join(" ")}");
+      }
+    });
+    duplicateValues.forEach((key, List<String> value) {
+      if (value.length > 1) {
+        hasExit = true;
+        print("重复的value:$key keys:${value.join(" ")}");
+      }
+    });
+
+    if (hasExit) {
+      exit(1);
+    }
+  }
+
   var file = new File(path.join(targetDir, outputFilename));
   var encoder = new JsonEncoder.withIndent("  ");
   file.writeAsStringSync(encoder.convert(allMessages));
